@@ -220,6 +220,37 @@ elif page == "📈 Regression Models":
                     'Coefficient': results['coefficients']
                 }).sort_values('Coefficient', key=abs, ascending=False)
                 st.dataframe(coeff_df, use_container_width=True)
+                
+                # Visualization - Actual vs Predicted
+                st.subheader("Actual vs Predicted")
+                fig, ax = plt.subplots(figsize=(10, 6))
+                y_test = splits['y_reg_test']
+                y_pred = results['predictions']
+                
+                # Sample for visualization if too many points
+                sample_size = min(500, len(y_test))
+                indices = np.random.choice(len(y_test), sample_size, replace=False)
+                
+                ax.scatter(y_test.iloc[indices], y_pred[indices], alpha=0.5, label='Predictions')
+                # Perfect prediction line
+                min_val = min(y_test.iloc[indices].min(), y_pred[indices].min())
+                max_val = max(y_test.iloc[indices].max(), y_pred[indices].max())
+                ax.plot([min_val, max_val], [min_val, max_val], 'r--', label='Perfect Prediction', linewidth=2)
+                ax.set_xlabel('Actual Global Sales')
+                ax.set_ylabel('Predicted Global Sales')
+                ax.set_title('Multiple Linear Regression: Actual vs Predicted')
+                ax.legend()
+                ax.grid(True, alpha=0.3)
+                st.pyplot(fig)
+                
+                # Feature coefficients bar chart
+                st.subheader("Feature Coefficients Visualization")
+                fig, ax = plt.subplots(figsize=(12, 6))
+                ax.barh(coeff_df['Feature'], coeff_df['Coefficient'])
+                ax.set_xlabel('Coefficient Value')
+                ax.set_title('Feature Coefficients in Multiple Linear Regression')
+                ax.grid(True, alpha=0.3, axis='x')
+                st.pyplot(fig)
             
             elif model_type == "Polynomial Regression":
                 results = regression.polynomial_regression(
@@ -237,6 +268,51 @@ elif page == "📈 Regression Models":
                     st.metric("RMSE", f"{results['rmse']:.4f}")
                 with col4:
                     st.metric("R² Score", f"{results['r2']:.4f}")
+                
+                # Visualization - Polynomial Regression Curve
+                st.subheader("Polynomial Regression Curve")
+                X_poly_test = splits['X_reg_test'][['Year']].values
+                y_test = splits['y_reg_test']
+                y_pred = results['predictions']
+                
+                # Sort by Year for smooth curve
+                sorted_indices = np.argsort(X_poly_test.flatten())
+                X_sorted = X_poly_test[sorted_indices]
+                y_test_sorted = y_test.iloc[sorted_indices]
+                y_pred_sorted = y_pred[sorted_indices]
+                
+                # Sample for visualization
+                sample_size = min(500, len(X_sorted))
+                sample_indices = np.linspace(0, len(X_sorted)-1, sample_size, dtype=int)
+                
+                fig, ax = plt.subplots(figsize=(12, 6))
+                ax.scatter(X_sorted[sample_indices], y_test_sorted.iloc[sample_indices], 
+                          alpha=0.5, label='Actual', s=20)
+                ax.plot(X_sorted[sample_indices], y_pred_sorted[sample_indices], 
+                       'r-', label='Polynomial Prediction', linewidth=2)
+                ax.set_xlabel('Year')
+                ax.set_ylabel('Global Sales')
+                ax.set_title('Polynomial Regression: Global Sales vs Year (Degree=3)')
+                ax.legend()
+                ax.grid(True, alpha=0.3)
+                st.pyplot(fig)
+                
+                # Actual vs Predicted scatter
+                st.subheader("Actual vs Predicted")
+                fig, ax = plt.subplots(figsize=(10, 6))
+                sample_size = min(500, len(y_test))
+                indices = np.random.choice(len(y_test), sample_size, replace=False)
+                
+                ax.scatter(y_test.iloc[indices], y_pred[indices], alpha=0.5, label='Predictions')
+                min_val = min(y_test.iloc[indices].min(), y_pred[indices].min())
+                max_val = max(y_test.iloc[indices].max(), y_pred[indices].max())
+                ax.plot([min_val, max_val], [min_val, max_val], 'r--', label='Perfect Prediction', linewidth=2)
+                ax.set_xlabel('Actual Global Sales')
+                ax.set_ylabel('Predicted Global Sales')
+                ax.set_title('Polynomial Regression: Actual vs Predicted')
+                ax.legend()
+                ax.grid(True, alpha=0.3)
+                st.pyplot(fig)
 
 # Page 4: Classification Models
 elif page == "🎯 Classification Models":
@@ -451,6 +527,38 @@ elif page == "🧠 Neural Networks":
                     st.metric("R² Score", f"{results['r2']:.4f}")
                 
                 st.write(f"Iterations: {results['n_iter']}, Final Loss: {results['loss']:.4f}")
+                
+                # Actual vs Predicted scatter
+                st.subheader("Actual vs Predicted")
+                fig, ax = plt.subplots(figsize=(10, 6))
+                y_test = splits['y_reg_test']
+                y_pred = results['predictions']
+                
+                # Sample for visualization
+                sample_size = min(500, len(y_test))
+                indices = np.random.choice(len(y_test), sample_size, replace=False)
+                
+                ax.scatter(y_test.iloc[indices], y_pred[indices], alpha=0.5, label='Predictions')
+                min_val = min(y_test.iloc[indices].min(), y_pred[indices].min())
+                max_val = max(y_test.iloc[indices].max(), y_pred[indices].max())
+                ax.plot([min_val, max_val], [min_val, max_val], 'r--', label='Perfect Prediction', linewidth=2)
+                ax.set_xlabel('Actual Global Sales')
+                ax.set_ylabel('Predicted Global Sales')
+                ax.set_title('MLP Regressor: Actual vs Predicted')
+                ax.legend()
+                ax.grid(True, alpha=0.3)
+                st.pyplot(fig)
+                
+                # Loss curve if available
+                if hasattr(results['model'], 'loss_curve_'):
+                    st.subheader("Training Loss Curve")
+                    fig, ax = plt.subplots(figsize=(10, 6))
+                    ax.plot(results['model'].loss_curve_, linewidth=2)
+                    ax.set_xlabel('Iterations')
+                    ax.set_ylabel('Loss')
+                    ax.set_title('MLP Regressor - Training Loss Curve')
+                    ax.grid(True, alpha=0.3)
+                    st.pyplot(fig)
 
 # Page 7: Ensemble Methods
 elif page == "⚡ Ensemble Methods":
