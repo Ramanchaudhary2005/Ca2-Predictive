@@ -42,12 +42,14 @@ matplotlib
 seaborn
 scikit-learn
 scipy
+streamlit
+jupyter
 ```
 
 ### Installation
 
 ```bash
-pip install pandas numpy matplotlib seaborn scikit-learn scipy
+pip install -r requirements.txt
 ```
 
 ## 📁 Project Structure
@@ -55,18 +57,46 @@ pip install pandas numpy matplotlib seaborn scikit-learn scipy
 ```
 Ca2 Predictive/
 │
-├── video_games_sales.csv          # Dataset file
+├── video_games_sales.csv              # Dataset file
 ├── Predictive_Analytics_Project.ipynb  # Main project notebook
-└── README.md                       # This file
+├── app.py                              # Streamlit web application
+├── data_cleaning.py                   # Data preprocessing module
+├── requirements.txt                    # Python dependencies
+├── README.md                           # This file
+└── models/                             # Machine learning models
+    ├── __init__.py
+    ├── regression.py                  # Regression models
+    ├── classification.py              # Classification models
+    ├── clustering.py                  # Clustering models
+    ├── neural_networks.py             # Neural network models
+    └── ensemble.py                    # Ensemble methods
 ```
 
 ## 🚀 How to Run
+
+### Option 1: Streamlit Web Application (Recommended)
+
+1. **Install dependencies:**
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+2. **Run the Streamlit app:**
+   ```bash
+   streamlit run app.py
+   ```
+
+3. **Access the web interface:**
+   - The app will automatically open in your default web browser
+   - If not, navigate to `http://localhost:8501`
+   - Use the sidebar to navigate between different sections
+
+### Option 2: Jupyter Notebook
 
 1. **Ensure all dependencies are installed:**
    ```bash
    pip install -r requirements.txt
    ```
-   (Or install manually using the packages listed above)
 
 2. **Open the Jupyter Notebook:**
    ```bash
@@ -206,12 +236,33 @@ The project demonstrates:
 4. **Dimensionality Reduction**: PCA shows that first few components capture most variance
 5. **Neural Networks**: MLP achieves competitive performance for both classification and regression tasks
 
+## 🌐 Streamlit Web Application Features
+
+The Streamlit app provides an interactive web interface with the following pages:
+
+1. **📊 Dataset Overview**: View dataset statistics, preview, missing values, and correlation heatmap
+2. **🔧 Data Preprocessing**: See data cleaning steps, feature distributions, and train-test split information
+3. **📈 Regression Models**: Run and compare Simple Linear, Multiple Linear, and Polynomial Regression
+4. **🎯 Classification Models**: Test KNN, Naïve Bayes, Decision Tree, and SVM classifiers
+5. **🔍 Clustering**: Perform K-Means and Hierarchical Clustering with visualizations
+6. **🧠 Neural Networks**: Train MLP Classifier and Regressor
+7. **⚡ Ensemble Methods**: Compare Bagging, AdaBoost, and Random Forest
+8. **📋 Model Comparison**: Side-by-side comparison of all models with visualizations
+
+### Streamlit App Features:
+- ✅ Interactive model selection and execution
+- ✅ Real-time metrics display
+- ✅ Visualizations (charts, heatmaps, ROC curves)
+- ✅ Model comparison tables
+- ✅ Cached data loading for faster performance
+
 ## 📝 Notes
 
 - The dataset may contain missing values which are handled during preprocessing
 - Some computationally expensive operations (SVM, Hierarchical Clustering, LOO-CV) use sampled data for faster execution
 - All models use random_state=42 for reproducibility
 - The binary classification threshold is set at 1.0M global sales (Hit ≥ 1.0M, Flop < 1.0M)
+- The Streamlit app caches data loading to improve performance on subsequent runs
 
 ## 🎓 Learning Outcomes
 
