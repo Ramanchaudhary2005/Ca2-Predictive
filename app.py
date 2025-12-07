@@ -44,19 +44,31 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Title
-st.markdown('<h1 class="main-header">🎮 Predictive Analytics: Video Games Sales Analysis</h1>', unsafe_allow_html=True)
+st.markdown('<h1 class="main-header">🎮 Video Games Sales Predictor</h1>', unsafe_allow_html=True)
 st.markdown("---")
 
-# Sidebar Navigation
-st.sidebar.title("Navigation")
-page = st.sidebar.radio(
-    "Select Page",
-    ["📊 Dataset Overview", "🔧 Data Preprocessing", "📈 Regression Models", 
-     "🎯 Classification Models", "🔍 Clustering", "🧠 Neural Networks", 
-     "⚡ Ensemble Methods", "📋 Model Comparison", "🎮 Game Prediction"]
-)
+# ----- REPLACED: Sidebar radio navigation with a top navbar -----
+pages = [
+    "📊 Dataset Overview", "🔧 Data Preprocessing", "📈 Regression Models",
+    "🎯 Classification Models", "🔍 Clustering", "🧠 Neural Networks",
+    "⚡ Ensemble Methods", "📋 Model Comparison", "🎮 Game Prediction"
+]
+
+# ensure session_state key exists
+if 'page' not in st.session_state:
+    st.session_state['page'] = pages[0]
+
+# render navbar as a row of buttons
+nav_cols = st.columns(len(pages))
+for i, p in enumerate(pages):
+    if nav_cols[i].button(p):
+        st.session_state['page'] = p
+
+page = st.session_state['page']
+# -----------------------------------------------------------------
 
 # Cache management in sidebar
+st.sidebar.title("Navigation")
 st.sidebar.markdown("---")
 st.sidebar.subheader("⚙️ Settings")
 if st.sidebar.button("🔄 Clear Cache & Reload", help="Clear all cached data and models. Use this if you encounter feature mismatch errors."):
@@ -1180,6 +1192,4 @@ elif page == "🎮 Game Prediction":
             else:
                 st.info("No similar games found in the dataset for comparison.")
 
-# Footer
-
-
+#  footer
