@@ -45,6 +45,22 @@ def engineer_features(df_clean):
     # Age of game (assuming current year is 2020 for this dataset)
     df_clean['Game_Age'] = 2020 - df_clean['Year']
     
+    # Total regional sales (sum of all regions)
+    df_clean['Total_Regional_Sales'] = (df_clean['NA_Sales'] + df_clean['EU_Sales'] + 
+                                        df_clean['JP_Sales'] + df_clean['Other_Sales'])
+    
+    # Publisher success rate (average global sales for publisher)
+    publisher_avg = df_clean.groupby('Publisher')['Global_Sales'].mean().to_dict()
+    df_clean['Publisher_Avg_Sales'] = df_clean['Publisher'].map(publisher_avg)
+    
+    # Genre-Platform combination popularity (average sales for this combo)
+    df_clean['Genre_Platform_Combo'] = df_clean['Genre'] + '_' + df_clean['Platform']
+    combo_avg = df_clean.groupby('Genre_Platform_Combo')['Global_Sales'].mean().to_dict()
+    df_clean['Combo_Avg_Sales'] = df_clean['Genre_Platform_Combo'].map(combo_avg)
+    
+    # Year trend (normalized year - helps capture market evolution)
+    df_clean['Year_Normalized'] = (df_clean['Year'] - df_clean['Year'].min()) / (df_clean['Year'].max() - df_clean['Year'].min())
+    
     return df_clean
 
 
@@ -52,25 +68,31 @@ def encode_categorical(df_clean):
     """Encode categorical variables using Label Encoding"""
     le_genre = LabelEncoder()
     le_platform = LabelEncoder()
+    le_publisher = LabelEncoder()
     
     df_clean['Genre_Encoded'] = le_genre.fit_transform(df_clean['Genre'])
     df_clean['Platform_Encoded'] = le_platform.fit_transform(df_clean['Platform'])
+    df_clean['Publisher_Encoded'] = le_publisher.fit_transform(df_clean['Publisher'])
     
-    return df_clean, le_genre, le_platform
+    return df_clean, le_genre, le_platform, le_publisher
 
 
 def prepare_data(df_clean):
     """Prepare features and targets for regression and classification"""
     # Regression features and target
     regression_features = ['NA_Sales', 'EU_Sales', 'JP_Sales', 'Other_Sales', 'Year', 
-                           'Genre_Encoded', 'Platform_Encoded', 'Game_Age']
+                           'Genre_Encoded', 'Platform_Encoded', 'Publisher_Encoded',
+                           'Game_Age', 'Total_Regional_Sales', 'Publisher_Avg_Sales', 
+                           'Combo_Avg_Sales', 'Year_Normalized']
     
     X_reg = df_clean[regression_features]
     y_reg = df_clean['Global_Sales']
     
     # Classification features and target
     classification_features = ['NA_Sales', 'EU_Sales', 'JP_Sales', 'Other_Sales', 'Year',
-                              'Genre_Encoded', 'Platform_Encoded', 'Game_Age']
+                              'Genre_Encoded', 'Platform_Encoded', 'Publisher_Encoded',
+                              'Game_Age', 'Total_Regional_Sales', 'Publisher_Avg_Sales',
+                              'Combo_Avg_Sales', 'Year_Normalized']
     
     X_clf = df_clean[classification_features]
     y_clf = df_clean['Hit']

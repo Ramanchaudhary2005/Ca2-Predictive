@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
+from scipy.cluster.hierarchy import dendrogram
 
 # Import custom modules
 import data_cleaning as dc
@@ -52,17 +53,29 @@ page = st.sidebar.radio(
     "Select Page",
     ["📊 Dataset Overview", "🔧 Data Preprocessing", "📈 Regression Models", 
      "🎯 Classification Models", "🔍 Clustering", "🧠 Neural Networks", 
-     "⚡ Ensemble Methods", "📋 Model Comparison"]
+     "⚡ Ensemble Methods", "📋 Model Comparison", "🎮 Game Prediction"]
 )
+
+# Cache management in sidebar
+st.sidebar.markdown("---")
+st.sidebar.subheader("⚙️ Settings")
+if st.sidebar.button("🔄 Clear Cache & Reload", help="Clear all cached data and models. Use this if you encounter feature mismatch errors."):
+    st.cache_data.clear()
+    st.cache_resource.clear()
+    st.sidebar.success("Cache cleared! Please refresh the page.")
+    st.rerun()
+
+# Cache version - increment this to force cache refresh when features change
+FEATURE_VERSION = "v2.0"  # Updated for 13 features
 
 # Load data (cached)
 @st.cache_data
-def load_and_preprocess_data():
+def load_and_preprocess_data(_version):
     """Load and preprocess data"""
     df = dc.load_data('video_games_sales.csv')
     df_clean = dc.clean_data(df)
     df_clean = dc.engineer_features(df_clean)
-    df_clean, le_genre, le_platform = dc.encode_categorical(df_clean)
+    df_clean, le_genre, le_platform, le_publisher = dc.encode_categorical(df_clean)
     X_reg, y_reg, X_clf, y_clf, reg_features, clf_features = dc.prepare_data(df_clean)
     data_splits = dc.split_and_scale(X_reg, y_reg, X_clf, y_clf)
     
@@ -77,12 +90,69 @@ def load_and_preprocess_data():
         'clf_features': clf_features,
         'splits': data_splits,
         'le_genre': le_genre,
-        'le_platform': le_platform
+        'le_platform': le_platform,
+        'le_publisher': le_publisher
     }
+
+# Train prediction models (cached)
+@st.cache_resource
+def train_prediction_models(_splits, _version):
+    """Train and cache the best models for prediction"""
+    # Train Random Forest for classification (best ensemble model)
+    clf_model = ensemble.random_forest_classifier(
+        _splits['X_clf_train_scaled'], _splits['y_clf_train'],
+        _splits['X_clf_test_scaled'], _splits['y_clf_test'],
+        n_estimators=100, max_depth=10
+    )
+    
+    # Train Multiple Linear Regression for sales prediction
+    reg_model = regression.multiple_linear_regression(
+        _splits['X_reg_train_scaled'], _splits['y_reg_train'],
+        _splits['X_reg_test_scaled'], _splits['y_reg_test']
+    )
+    
+    return {
+        'clf_model': clf_model['model'],
+        'reg_model': reg_model['model'],
+        'clf_scaler': _splits['scaler_clf'],
+        'reg_scaler': _splits['scaler_reg']
+    }
+
+# Get average regional sales for genre/platform combination
+@st.cache_data
+def get_average_regional_sales(df_clean):
+    """Calculate average regional sales by genre and platform"""
+    avg_sales = df_clean.groupby(['Genre', 'Platform']).agg({
+        'NA_Sales': 'mean',
+        'EU_Sales': 'mean',
+        'JP_Sales': 'mean',
+        'Other_Sales': 'mean'
+    }).reset_index()
+    return avg_sales
+
+# Get publisher statistics
+@st.cache_data
+def get_publisher_stats(df_clean):
+    """Calculate publisher average sales"""
+    publisher_stats = df_clean.groupby('Publisher').agg({
+        'Global_Sales': 'mean'
+    }).reset_index()
+    publisher_stats.columns = ['Publisher', 'Avg_Sales']
+    return publisher_stats
+
+# Get genre-platform combo statistics
+@st.cache_data
+def get_combo_stats(df_clean):
+    """Calculate genre-platform combination average sales"""
+    combo_stats = df_clean.groupby(['Genre', 'Platform']).agg({
+        'Global_Sales': 'mean'
+    }).reset_index()
+    combo_stats.columns = ['Genre', 'Platform', 'Avg_Sales']
+    return combo_stats
 
 # Load data
 with st.spinner("Loading and preprocessing data..."):
-    data = load_and_preprocess_data()
+    data = load_and_preprocess_data(FEATURE_VERSION)
 
 df = data['df']
 df_clean = data['df_clean']
@@ -745,6 +815,370 @@ elif page == "📋 Model Comparison":
                 axes[1].tick_params(axis='x', rotation=45)
                 plt.tight_layout()
                 st.pyplot(fig)
+
+# Page 9: Game Prediction
+elif page == "🎮 Game Prediction":
+    st.header("🎮 Game Success Prediction")
+    
+    # Check if models are using the correct feature count
+    expected_features = len(data['clf_features'])
+    if expected_features != 13:
+        st.warning(f"""
+        ⚠️ **Model Feature Mismatch Detected**
+        
+        The models appear to be using {expected_features} features instead of 13. 
+        This can happen if the app was started before the feature update.
+        
+        **Solution:** 
+        1. Click "🔄 Clear Cache & Reload" in the sidebar, OR
+        2. Restart the Streamlit app completely (stop with Ctrl+C and run `streamlit run app.py` again)
+        
+        This will retrain the models with all 13 features including Publisher and derived features.
+        """)
+    
+    st.markdown("""
+    Predict whether a new game will be a **Hit** (≥1M global sales) or **Flop** (<1M global sales) 
+    based on its characteristics. The model uses **13 features** including:
+    - **Basic Info**: Genre, Platform, Publisher, Release Year
+    - **Regional Sales**: NA, EU, JP, and Other regions (estimated or custom)
+    - **Derived Features**: Publisher track record, Genre-Platform popularity, Total regional sales, Year trends
+    
+    You can either provide regional sales estimates or let the system use historical averages for similar games.
+    """)
+    
+    # Train models if not already cached
+    with st.spinner("Loading prediction models..."):
+        prediction_models = train_prediction_models(splits, FEATURE_VERSION)
+        avg_sales = get_average_regional_sales(df_clean)
+        publisher_stats = get_publisher_stats(df_clean)
+        combo_stats = get_combo_stats(df_clean)
+    
+    # Get unique genres, platforms, and publishers
+    genres = sorted(df_clean['Genre'].unique())
+    platforms = sorted(df_clean['Platform'].unique())
+    publishers = sorted(df_clean['Publisher'].unique())
+    
+    # Input form
+    st.subheader("Game Information")
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        game_name = st.text_input("Game Name (optional)", placeholder="Enter game name")
+        release_year = st.number_input("Release Year", min_value=1980, max_value=2030, value=2024, step=1)
+        genre = st.selectbox("Genre", genres)
+        platform = st.selectbox("Platform", platforms)
+    
+    with col2:
+        publisher = st.selectbox("Publisher", publishers, help="Select the game publisher. Publisher track record affects prediction accuracy.")
+        use_custom_sales = st.checkbox("Provide custom regional sales estimates", value=False)
+        
+        if use_custom_sales:
+            st.write("**Regional Sales Estimates (in millions)**")
+            na_sales = st.number_input("North America Sales", min_value=0.0, value=0.0, step=0.1, format="%.2f")
+            eu_sales = st.number_input("Europe Sales", min_value=0.0, value=0.0, step=0.1, format="%.2f")
+            jp_sales = st.number_input("Japan Sales", min_value=0.0, value=0.0, step=0.1, format="%.2f")
+            other_sales = st.number_input("Other Regions Sales", min_value=0.0, value=0.0, step=0.1, format="%.2f")
+        else:
+            st.info("💡 Regional sales will be estimated using historical averages for similar games (same Genre + Platform)")
+            na_sales = None
+            eu_sales = None
+            jp_sales = None
+            other_sales = None
+    
+    with col3:
+        st.write("**Additional Information**")
+        # Show publisher average sales if available
+        pub_avg = publisher_stats[publisher_stats['Publisher'] == publisher]
+        if len(pub_avg) > 0:
+            st.metric("Publisher Avg Sales", f"{pub_avg['Avg_Sales'].iloc[0]:.2f}M", 
+                     help="Average global sales for games from this publisher")
+        
+        # Show genre-platform combo average
+        combo_avg = combo_stats[(combo_stats['Genre'] == genre) & (combo_stats['Platform'] == platform)]
+        if len(combo_avg) > 0:
+            st.metric("Genre-Platform Avg", f"{combo_avg['Avg_Sales'].iloc[0]:.2f}M",
+                     help="Average global sales for this genre-platform combination")
+    
+    # Predict button
+    if st.button("🔮 Predict Game Success", type="primary", use_container_width=True):
+        with st.spinner("Analyzing game data and making prediction..."):
+            # Calculate Game_Age
+            current_year = 2024  # You can update this
+            game_age = current_year - release_year
+            
+            # Get or estimate regional sales
+            if use_custom_sales:
+                estimated_na = na_sales
+                estimated_eu = eu_sales
+                estimated_jp = jp_sales
+                estimated_other = other_sales
+            else:
+                # Use historical averages for this genre/platform combination
+                matching_sales = avg_sales[
+                    (avg_sales['Genre'] == genre) & 
+                    (avg_sales['Platform'] == platform)
+                ]
+                
+                if len(matching_sales) > 0:
+                    estimated_na = matching_sales['NA_Sales'].iloc[0]
+                    estimated_eu = matching_sales['EU_Sales'].iloc[0]
+                    estimated_jp = matching_sales['JP_Sales'].iloc[0]
+                    estimated_other = matching_sales['Other_Sales'].iloc[0]
+                else:
+                    # Fallback to overall averages if no match
+                    estimated_na = df_clean['NA_Sales'].mean()
+                    estimated_eu = df_clean['EU_Sales'].mean()
+                    estimated_jp = df_clean['JP_Sales'].mean()
+                    estimated_other = df_clean['Other_Sales'].mean()
+            
+            # Encode genre, platform, and publisher
+            try:
+                genre_encoded = data['le_genre'].transform([genre])[0]
+                platform_encoded = data['le_platform'].transform([platform])[0]
+                publisher_encoded = data['le_publisher'].transform([publisher])[0]
+            except:
+                # If new genre/platform/publisher not in training data, use 0
+                genre_encoded = 0
+                platform_encoded = 0
+                publisher_encoded = 0
+            
+            # Calculate additional features
+            total_regional_sales = estimated_na + estimated_eu + estimated_jp + estimated_other
+            
+            # Get publisher average sales
+            pub_avg_sales = publisher_stats[publisher_stats['Publisher'] == publisher]
+            if len(pub_avg_sales) > 0:
+                publisher_avg_sales = pub_avg_sales['Avg_Sales'].iloc[0]
+            else:
+                publisher_avg_sales = df_clean['Global_Sales'].mean()
+            
+            # Get genre-platform combo average sales
+            combo_avg_sales = combo_stats[(combo_stats['Genre'] == genre) & (combo_stats['Platform'] == platform)]
+            if len(combo_avg_sales) > 0:
+                combo_avg = combo_avg_sales['Avg_Sales'].iloc[0]
+            else:
+                combo_avg = df_clean['Global_Sales'].mean()
+            
+            # Calculate normalized year (0 to 1 scale)
+            year_min = df_clean['Year'].min()
+            year_max = df_clean['Year'].max()
+            year_normalized = (release_year - year_min) / (year_max - year_min) if year_max > year_min else 0.5
+            
+            # Prepare feature vector (13 features total)
+            features = np.array([[
+                estimated_na,                    # 0: NA_Sales
+                estimated_eu,                    # 1: EU_Sales
+                estimated_jp,                    # 2: JP_Sales
+                estimated_other,                 # 3: Other_Sales
+                release_year,                    # 4: Year
+                genre_encoded,                   # 5: Genre_Encoded
+                platform_encoded,                # 6: Platform_Encoded
+                publisher_encoded,               # 7: Publisher_Encoded
+                game_age,                        # 8: Game_Age
+                total_regional_sales,           # 9: Total_Regional_Sales
+                publisher_avg_sales,            # 10: Publisher_Avg_Sales
+                combo_avg,                       # 11: Combo_Avg_Sales
+                year_normalized                  # 12: Year_Normalized
+            ]])
+            
+            # Verify feature count matches model expectations
+            expected_feature_count = len(data['clf_features'])
+            actual_feature_count = features.shape[1]
+            
+            if actual_feature_count != expected_feature_count:
+                st.error(f"""
+                **Feature Count Mismatch Error!**
+                
+                - Expected: {expected_feature_count} features
+                - Provided: {actual_feature_count} features
+                
+                This usually happens when the model cache needs to be refreshed. 
+                Please restart the Streamlit app to retrain models with the new feature set.
+                
+                **To fix:** Stop the app (Ctrl+C) and restart it with `streamlit run app.py`
+                """)
+                st.stop()
+            
+            # Scale features for classification
+            features_scaled_clf = prediction_models['clf_scaler'].transform(features)
+            
+            # Predict Hit/Flop
+            hit_prediction = prediction_models['clf_model'].predict(features_scaled_clf)[0]
+            hit_probability = prediction_models['clf_model'].predict_proba(features_scaled_clf)[0]
+            
+            # Predict Global Sales
+            features_scaled_reg = prediction_models['reg_scaler'].transform(features)
+            predicted_global_sales = prediction_models['reg_model'].predict(features_scaled_reg)[0]
+            predicted_global_sales = max(0, predicted_global_sales)  # Ensure non-negative
+            
+            # Display results
+            st.markdown("---")
+            st.subheader("📊 Prediction Results")
+            
+            # Main prediction card
+            col1, col2, col3 = st.columns([2, 1, 1])
+            
+            with col1:
+                if hit_prediction == 1:
+                    st.markdown("""
+                    <div style='background-color: #d4edda; padding: 20px; border-radius: 10px; border-left: 5px solid #28a745;'>
+                        <h2 style='color: #155724; margin: 0;'>🎯 HIT GAME!</h2>
+                        <p style='color: #155724; margin-top: 10px; font-size: 1.1em;'>
+                            This game is predicted to be a <strong>HIT</strong> with ≥1M global sales!
+                        </p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                else:
+                    st.markdown("""
+                    <div style='background-color: #f8d7da; padding: 20px; border-radius: 10px; border-left: 5px solid #dc3545;'>
+                        <h2 style='color: #721c24; margin: 0;'>⚠️ FLOP GAME</h2>
+                        <p style='color: #721c24; margin-top: 10px; font-size: 1.1em;'>
+                            This game is predicted to be a <strong>FLOP</strong> with <1M global sales.
+                        </p>
+                    </div>
+                    """, unsafe_allow_html=True)
+            
+            with col2:
+                confidence = hit_probability[1] if hit_prediction == 1 else hit_probability[0]
+                st.metric("Confidence", f"{confidence*100:.1f}%")
+            
+            with col3:
+                st.metric("Predicted Global Sales", f"{predicted_global_sales:.2f}M")
+            
+            # Detailed metrics
+            st.markdown("---")
+            st.subheader("📈 Detailed Predictions")
+            
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                st.metric("Predicted NA Sales", f"{estimated_na:.2f}M")
+            with col2:
+                st.metric("Predicted EU Sales", f"{estimated_eu:.2f}M")
+            with col3:
+                st.metric("Predicted JP Sales", f"{estimated_jp:.2f}M")
+            with col4:
+                st.metric("Predicted Other Sales", f"{estimated_other:.2f}M")
+            
+            # Probability breakdown
+            st.markdown("---")
+            st.subheader("🎲 Probability Breakdown")
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                # Probability bar chart
+                prob_df = pd.DataFrame({
+                    'Outcome': ['Flop (<1M)', 'Hit (≥1M)'],
+                    'Probability': [hit_probability[0]*100, hit_probability[1]*100]
+                })
+                
+                fig, ax = plt.subplots(figsize=(8, 5))
+                colors = ['#dc3545' if hit_prediction == 0 else '#f8d7da', 
+                          '#28a745' if hit_prediction == 1 else '#d4edda']
+                bars = ax.bar(prob_df['Outcome'], prob_df['Probability'], color=colors)
+                ax.set_ylabel('Probability (%)')
+                ax.set_title('Success Probability')
+                ax.set_ylim(0, 100)
+                
+                # Add value labels on bars
+                for bar in bars:
+                    height = bar.get_height()
+                    ax.text(bar.get_x() + bar.get_width()/2., height,
+                           f'{height:.1f}%',
+                           ha='center', va='bottom', fontsize=12, fontweight='bold')
+                
+                ax.grid(True, alpha=0.3, axis='y')
+                st.pyplot(fig)
+            
+            with col2:
+                # Feature importance (if available)
+                st.write("**Key Factors**")
+                st.write(f"• **Genre**: {genre}")
+                st.write(f"• **Platform**: {platform}")
+                st.write(f"• **Publisher**: {publisher}")
+                st.write(f"• **Release Year**: {release_year}")
+                st.write(f"• **Game Age**: {game_age} years")
+                st.write(f"• **Total Regional Sales**: {total_regional_sales:.2f}M")
+                st.write(f"• **Publisher Avg**: {publisher_avg_sales:.2f}M")
+                st.write(f"• **Combo Avg**: {combo_avg:.2f}M")
+                
+                if not use_custom_sales:
+                    st.info("💡 Regional sales were estimated from historical data")
+            
+            # Insights and recommendations
+            st.markdown("---")
+            st.subheader("💡 Insights & Recommendations")
+            
+            if hit_prediction == 1:
+                if predicted_global_sales >= 5.0:
+                    st.success("🌟 **Excellent Potential!** This game shows strong potential for exceptional sales performance.")
+                elif predicted_global_sales >= 2.0:
+                    st.success("✅ **Good Potential!** This game is likely to perform well in the market.")
+                else:
+                    st.info("📊 **Moderate Success** - The game is predicted to cross the 1M threshold, but may need marketing support.")
+            else:
+                if predicted_global_sales < 0.5:
+                    st.warning("⚠️ **High Risk** - This game faces significant challenges. Consider:")
+                    st.write("  - Market research to understand target audience better")
+                    st.write("  - Enhanced marketing strategy")
+                    st.write("  - Platform/genre combination optimization")
+                else:
+                    st.info("📉 **Moderate Risk** - The game may need strategic improvements:")
+                    st.write("  - Strong marketing campaign")
+                    st.write("  - Consider different platform or release timing")
+                    st.write("  - Focus on key markets (NA/EU)")
+            
+            # Comparison with similar games
+            st.markdown("---")
+            st.subheader("📊 Comparison with Similar Games")
+            
+            # Similar games by genre and platform
+            similar_games = df_clean[
+                (df_clean['Genre'] == genre) & 
+                (df_clean['Platform'] == platform)
+            ]
+            
+            # Games by same publisher
+            publisher_games = df_clean[df_clean['Publisher'] == publisher]
+            
+            if len(similar_games) > 0:
+                col1, col2, col3, col4 = st.columns(4)
+                
+                with col1:
+                    avg_sales_similar = similar_games['Global_Sales'].mean()
+                    st.metric("Avg Sales (Genre+Platform)", f"{avg_sales_similar:.2f}M")
+                
+                with col2:
+                    hit_rate = (similar_games['Hit'] == 1).mean() * 100
+                    st.metric("Hit Rate (Genre+Platform)", f"{hit_rate:.1f}%")
+                
+                with col3:
+                    if len(publisher_games) > 0:
+                        pub_avg_sales = publisher_games['Global_Sales'].mean()
+                        pub_hit_rate = (publisher_games['Hit'] == 1).mean() * 100
+                        st.metric("Publisher Avg Sales", f"{pub_avg_sales:.2f}M")
+                    else:
+                        st.metric("Publisher Avg Sales", "N/A")
+                
+                with col4:
+                    total_similar = len(similar_games)
+                    st.metric("Similar Games (Genre+Platform)", total_similar)
+                
+                # Show if prediction is above/below average
+                if predicted_global_sales > avg_sales_similar:
+                    st.success(f"✅ Your game is predicted to perform **{((predicted_global_sales/avg_sales_similar - 1)*100):.1f}% better** than average similar games (Genre+Platform)!")
+                else:
+                    st.warning(f"⚠️ Your game is predicted to perform **{((1 - predicted_global_sales/avg_sales_similar)*100):.1f}% worse** than average similar games (Genre+Platform).")
+                
+                # Publisher comparison
+                if len(publisher_games) > 0:
+                    if predicted_global_sales > pub_avg_sales:
+                        st.info(f"📈 Compared to {publisher}'s average: **{((predicted_global_sales/pub_avg_sales - 1)*100):.1f}% better** (Publisher hit rate: {pub_hit_rate:.1f}%)")
+                    else:
+                        st.info(f"📉 Compared to {publisher}'s average: **{((1 - predicted_global_sales/pub_avg_sales)*100):.1f}% worse** (Publisher hit rate: {pub_hit_rate:.1f}%)")
+            else:
+                st.info("No similar games found in the dataset for comparison.")
 
 # Footer
 
